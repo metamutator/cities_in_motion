@@ -12,12 +12,9 @@ import matplotlib.pyplot as plt
 
 def load_taxi_count():
     # processed_fname = f'gs://dva-sg-team105/processed_summary/processed_taxi_count.all.csv'
-    year_dfs = [pd.read_csv(f'data/analysis/processed_taxi_count.{year}.csv', index_col=0) for year in range(2016, 2022)]
+    year_dfs = [pd.read_csv(f'./data/analysis/processed_taxi_count.{year}.csv', index_col=0) for year in range(2016, 2022)]
     _df = pd.concat(year_dfs, axis=0)        
     
-    # processed_fname = 'data/processed/processed_taxi_count.all.csv'
-    # _df = pd.read_csv(processed_fname, index_col=0)
-
     # preprocessing
     _df = _df.reset_index().set_index('filename')
     idx = set(_df.index)
@@ -35,10 +32,10 @@ def load_taxi_count():
 
 def load_taxi_locations():
     # fname = f'gs://dva-sg-team105/processed/2021/taxi_region.20211001000000.csv'
-    fname = 'data/processed/2021/taxi_region.20211001000000.csv'
+    fname = './data/processed/2021/taxi_region.20211001000000.csv'
 
     df = pd.read_csv(fname, index_col=0)
-
+    st.write(df)
     # add geometry
     df['geometry'] = df['geometry'].apply(wkt.loads)
     gdf = gpd.GeoDataFrame(df, crs='epsg:4326')
@@ -47,11 +44,13 @@ def load_taxi_locations():
 
 def load_country_gdf():
     # fname = f'gs://dva-sg-team105/region1.geojson'
-    fname = 'data/region1.geojson'
+    fname = './data/region1.geojson'
 
     with open(fname, "rb") as f:
         country_json = json.load(f)
+    # st.write(country_json)
     country_gdf = gpd.GeoDataFrame.from_features(country_json)
+    # st.write("reached here")
     return country_gdf
 
 def create_folium_choropleth(taxi_count_df, country_geo):

@@ -1,4 +1,3 @@
-
 # -*- coding: utf-8 -*-
 # Copyright 2018-2019 Streamlit Inc.
 #
@@ -14,8 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""An example of showing geographic data."""
-
+from datetime import datetime
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -23,25 +21,85 @@ import altair as alt
 import pydeck as pdk
 from streamlit_folium import folium_static
 import folium
+import geopandas as gpd
+import json
 
 # SETTING PAGE CONFIG TO WIDE MODE
 st.set_page_config(layout="wide")
 
 # LOADING DATA
 DATE_TIME = "date/time"
-DATA_URL = (
-    "gs://dva-sg-team105/processed_summary/processed_taxi_count.all.csv"
-)
+MIN_DATE_TIME = datetime(2016, 9, 16, 13, 0, 0)
+MIN_COVID_DATE_TIME = datetime(2020, 4, 1, 0, 0, 0)
+MAX_DATE_TIME = datetime(2021, 10, 16, 13, 0, 0)
+COUNTRY_GEO = 'data/region1.geojson'
+
+st.sidebar.header("Filter by time")
+@st.cache(persist=True)
+def load_taxi_count():
+    # processed_fname = f'gs://dva-sg-team105/processed_summary/processed_taxi_count.all.csv'
+    year_dfs = [pd.read_csv(f'./data/analysis/processed_taxi_count.{year}.csv', index_col=0) for year in range(2016, 2022)]
+    _df = pd.concat(year_dfs, axis=0)        
+    
+    # preprocessing
+    _df = _df.reset_index().set_index('filename')
+    idx = set(_df.index)
+    idx_to_dt_map = {x:datetime.strptime(str(x), "%Y%m%d%H%M%S") for x in idx}
+
+    # drop noisy data
+    idx_to_drop = [i for i in idx if (i < 20160916130000) 
+                   or ((i >= 20171016110000) & (i <= 20171129090000))]
+    _df.drop(idx_to_drop, axis=0, inplace=True)
+
+    _df.index = _df.index.map(idx_to_dt_map)
+
+    return _df
+data = load_taxi_count()
 
 @st.cache(persist=True)
-def load_data(nrows):
-    data = pd.read_csv(DATA_URL, nrows=nrows)
-    lowercase = lambda x: str(x).lower()
-    data.rename(lowercase, axis="columns", inplace=True)
-    data[DATE_TIME] = pd.to_datetime(data[DATE_TIME])
-    return data
+def load_taxi_locations():
+    # fname = f'gs://dva-sg-team105/processed/2021/taxi_region.20211001000000.csv'
+    fname = './data/processed/2021/taxi_region.20211001000000.csv' #not available
 
-data = load_data(100000)
+    df = pd.read_csv(fname, index_col=0)
+    st.write(df)
+    # add geometry
+    df['geometry'] = df['geometry'].apply(wkt.loads)
+    gdf = gpd.GeoDataFrame(df, crs='epsg:4326')
+    return gdf
+# taxi_locations = load_taxi_locations()
+
+@st.cache(persist=True)
+def load_country_gdf():
+    # fname = f'gs://dva-sg-team105/region1.geojson'
+    fname = './data/region1.geojson'
+
+    with open(fname, "rb") as f:
+        country_json = json.load(f)
+    # st.write(country_json)
+    country_gdf = gpd.GeoDataFrame.from_features(country_json)
+    # st.write("reached here")
+    return country_gdf
+country_gdf = load_country_gdf()
+
+def create_folium_choropleth(taxi_count_df, country_geo):
+    # center on Singapore
+    m = folium.Map(location=[1.3572, 103.8207], zoom_start=11)
+
+    folium.Choropleth(
+        geo_data=country_geo,
+        name="choropleth",
+        data=taxi_count_df,
+        columns=["region", "taxi_count"],
+        key_on="feature.properties.name",
+        fill_color="YlOrRd",
+        fill_opacity=0.7,
+        line_opacity=0.2,
+        legend_name="Taxi Count",
+    ).add_to(m)
+
+    # call to render Folium map in Streamlit
+    folium_static(m, width=650)
 
 # CREATING FUNCTION FOR MAPS
 
@@ -78,86 +136,49 @@ with title_container:
     # """)
     st.write(
     """    
-    Examining how demand for taxi has varied between a baseline period and current in Singapore. 
+    Examining how demand for taxi has varied because of Covid in Singapore. 
     """)
 
-row1_1, row1_2 = st.columns((2,2))
+st.subheader("Summary (Islandwide)")
 
-with row1_1:
-    st.subheader("Baseline Period")
-with row1_2:
-    st.subheader("Analysis Period")
-
-# col2, col3 = st.rows(2)
-# with col2:
-row21, row22, row23, row24 = st.columns((1,1,1,1))
-with row21:
-    baseline_date_start = st.date_input("Baseline Start", value=data[DATE_TIME].min())
-with row22:
-    baseline_hour_start = st.slider("Baseline Hour Start", 0, 23)
-with row23:
-    analysis_date_start = st.date_input("Analysis Start", value=data[DATE_TIME].max())
-with row24:
-    analysis_hour_start = st.slider("Analysis Hour Star", 0, 23)    
-# with col3:
-row31, row32, row33, row34 = st.columns((1,1,1,1))
-with row31:
-    baseline_date_end = st.date_input("Baseline End", value=data[DATE_TIME].min())
-with row32:
-    baseline_hour_end = st.slider("Baseline Hour End", 0, 23)
-with row33:
-    analysis_date_end = st.date_input("Analysis End", value=data[DATE_TIME].max())
-with row34:
-    analysis_hour_end = st.slider("Analysis Hour End", 0, 23)    
+with st.expander("Search Parameters", expanded=True):
+    row21, row22, row23, row24, row25 = st.columns((1,1,1,1,1))
+    with row21:
+        baseline_date_start = st.date_input("Baseline Starts On", value=MIN_DATE_TIME)
+    with row22:
+        analysis_date_start = st.date_input("Analysis Starts On", value=MIN_COVID_DATE_TIME)
+    with row23:
+        date_end = st.time_input("Hour of the Day")#, datetime.time(13,00))
+    with row24:
+        time_period = st.number_input("For the next", value=10, min_value=1)
+    with row25:
+        option = st.selectbox("Time Unit", ("Hour", "Days", "Weeks", "Months", "Years", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays", "Sundays"))
 
 # FILTERING DATA BY HOUR SELECTED
-data = data[data[DATE_TIME].dt.hour == baseline_hour_start]
-
-# LAYING OUT THE MIDDLE SECTION OF THE APP WITH THE MAPS
-# row2_1, row2_2, row2_3, row2_4 = st.columns((2,1,1,1))
-
-# # SETTING THE ZOOM LOCATIONS FOR THE AIRPORTS
-# la_guardia= [40.7900, -73.8700]
-# jfk = [40.6650, -73.7821]
-# newark = [40.7090, -74.1805]
-# zoom_level = 12
-# midpoint = (np.average(data["lat"]), np.average(data["lon"]))
-
-# with row2_1:
-#     st.write("**All New York City from %i:00 and %i:00**" % (baseline_hour_start, (baseline_hour_start + 1) % 24))
-#     map(data, midpoint[0], midpoint[1], 11)
-
-# with row2_2:
-#     st.write("**La Guardia Airport**")
-#     map(data, la_guardia[0],la_guardia[1], zoom_level)
-
-# with row2_3:
-#     st.write("**JFK Airport**")
-#     map(data, jfk[0],jfk[1], zoom_level)
-
-# with row2_4:
-#     st.write("**Newark Airport**")
-#     map(data, newark[0],newark[1], zoom_level)
+# data = data[data[DATE_TIME].dt.hour == baseline_hour_start]
 
 lat =  1.352083  #37.76
 lon = 103.819836 #-122.4
 
 row41, row42 = st.columns((1,1))
 with row41:
-    # map = folium.Map(location=[lat, lon], zoom_start=12, width="80%")
-    # folium_static(map)
-    st.image("taxi-availability-heatmap.png", use_column_width=True, caption=f"Taxi Demand between {baseline_date_start} and {baseline_date_end}")
+    _date = datetime.strftime(baseline_date_start, "%Y-%m-%d")    
+    st.markdown(f"##### Baseline as on {_date}")
+    create_folium_choropleth(data.loc[_date], COUNTRY_GEO)    
+    # st.text(f'Nu {_date}')
 with row42:
-    st.image("nike-plus-run-map.jpg", use_column_width=True, caption=f"Taxi Demand between {analysis_date_start} and {analysis_date_end}")
+    _analysis_date = datetime.strftime(analysis_date_start, "%Y-%m-%d")    
+    st.markdown(f'##### Analysis as on {_analysis_date}')
+    create_folium_choropleth(data.loc[_analysis_date], COUNTRY_GEO)
 
 # FILTERING DATA FOR THE HISTOGRAM
-filtered = data[
-    (data[DATE_TIME].dt.hour >= baseline_hour_start) & (data[DATE_TIME].dt.hour < (baseline_hour_start + 1))
-    ]
+# filtered = data[
+#     (data[DATE_TIME].dt.hour >= baseline_hour_start) & (data[DATE_TIME].dt.hour < (baseline_hour_start + 1))
+#     ]
 
-hist = np.histogram(filtered[DATE_TIME].dt.minute, bins=24, range=(0, 24))[0]
+# hist = np.histogram(filtered[DATE_TIME].dt.minute, bins=24, range=(0, 24))[0]
 
-chart_data = pd.DataFrame({"hour": range(24), "demand": hist})
+# chart_data = pd.DataFrame({"hour": range(24), "demand": hist})
 
 # LAYING OUT THE HISTOGRAM SECTION
 
@@ -176,6 +197,8 @@ st.write("")
 #         opacity=0.2,
 #         color='red'
 #     ), use_container_width=True)
+
+st.subheader("District by District Analysis")
 
 row51, row52 = st.columns((1,1))
 changi_lat = 1.3480297
