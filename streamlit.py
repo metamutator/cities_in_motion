@@ -13,7 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from datetime import datetime
+import datetime as dt
+from datetime import datetime, timedelta
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -34,6 +35,7 @@ MIN_DATE_TIME = datetime(2016, 9, 16, 13, 0, 0)
 MIN_COVID_DATE_TIME = datetime(2020, 4, 1, 0, 0, 0)
 MAX_DATE_TIME = datetime(2021, 10, 16, 13, 0, 0)
 COUNTRY_GEO = 'data/region1.geojson'
+EXCLUDED_DISTRICTS = ['CHANGI BAY', 'LIM CHU KANG', 'SIMPANG']
 
 st.sidebar.header("Filter by time")
 
@@ -56,7 +58,9 @@ def load_taxi_count():
     _df.index = _df.index.map(idx_to_dt_map)
 
     return _df
-data = load_taxi_count()
+
+full_data = load_taxi_count()
+districts = sorted(list(set(full_data.region) - set(EXCLUDED_DISTRICTS)))
 
 @st.cache(persist=True)
 def load_taxi_locations():
@@ -83,9 +87,52 @@ def load_country_gdf():
     # TUAS, SOUTHERN ISLANDS, WESTERN WATER CATCHMENT and other districts are GeometryCollection geometries in the source file. They don't play well with GeoJsonTooltip. Casting them all to
     # MultiPolygon to ensure the GeoJson tooltip works. For more info, see: https://github.com/python-visualization/folium/issues/929
     return country_gdf
+
 country_gdf = load_country_gdf()
 
-def create_folium_choropleth(taxi_count_df, country_geo):
+def filter_data(full_data, baseline_date_start, analysis_date_start, hour_of_day, time_period, time_frequency):
+    def date_to_datetime(t):
+        return datetime(t.year, t.month, t.day)
+
+    def get_time_delta(time_period, time_frequency):
+        p = int(time_period)
+        if time_frequency.lower() == 'hours':
+            return timedelta(hours=p)
+        elif time_frequency.lower() == 'days':
+            return timedelta(days=p)
+        elif time_frequency.lower() == 'weeks':
+            return timedelta(weeks=p)
+        elif time_frequency.lower() == 'months':
+            return timedelta(months=p*30)  # just a hack
+        elif time_frequency.lower() == 'months':
+            return timedelta(years=p*365)  # just a hack
+
+    baseline_from = date_to_datetime(baseline_date_start) + timedelta(hours=int(hour_of_day))
+    baseline_to = baseline_from + get_time_delta(time_period, time_frequency)
+    if baseline_to >= datetime(2020, 4, 1):
+        baseline_to = datetime(2020, 4, 1)
+
+    # st.write(baseline_from, baseline_to)  # debug
+
+    analysis_from = date_to_datetime(analysis_date_start) + timedelta(hours=int(hour_of_day))
+    analysis_to = analysis_from + get_time_delta(time_period, time_frequency)
+    if analysis_to >= datetime(2021, 10, 1):
+        analysis_to =datetime(2021, 10, 1)
+
+    # st.write(analysis_from, analysis_to)  # debug
+
+    baseline_data = full_data.loc[baseline_from:baseline_to].copy()
+    baseline_data = baseline_data.groupby('region').mean().round().reset_index()  # take mean across all hourly data
+    # st.write(baseline_data)  # debug
+
+    analysis_data = full_data.loc[analysis_from:analysis_to].copy()
+    analysis_data = analysis_data.groupby('region').mean().round().reset_index()  # take mean across all hourly data
+    # st.write(analysis_data)  # debug
+
+    return baseline_data, analysis_data
+
+
+def create_folium_choropleth(taxi_count_df, country_geo, country_gdf):
     # center on Singapore
     m = folium.Map(location=[1.3572, 103.8207], zoom_start=11)
     bins = list(range(0, 1000, 100))
@@ -93,13 +140,23 @@ def create_folium_choropleth(taxi_count_df, country_geo):
     # country_geo    
     # country_geo = country_geo["geometry"].apply(lambda x: Multipolygon(x))
 
+    # change country_gdf such that taxi count appears on tooltip
+    data_on_date = taxi_count_df.copy()  # deepcopy
+    country_gdf_on_date = country_gdf.copy()  # deepcopy
+    districts_on_date = sorted(list(set(data_on_date.region.tolist())))
+    name_to_namecount_map = {d:d + ' ' + str(data_on_date.loc[data_on_date.region == d, 'taxi_count'].values[0]) for d in districts_on_date}
+    data_on_date['region'] = data_on_date.region.map(name_to_namecount_map)
+    data_on_date.dropna(subset=['region'], inplace=True)
+    country_gdf_on_date['name'] = country_gdf_on_date.name.map(name_to_namecount_map)
+    country_gdf_on_date.dropna(subset=['name'], inplace=True)    
+
     choropleth = folium.Choropleth(
-        geo_data=country_gdf.to_json(),
+        geo_data=country_gdf_on_date.to_json(),
         # name="choropleth",
-        data=taxi_count_df,
+        data=data_on_date,
         columns=["region", "taxi_count"],
         key_on="properties.name",
-        fill_color="RdBu",
+        fill_color="YlOrRd",
         nan_fill_color="black",
         nan_fill_opacity=0.5,
         fill_opacity=0.7,
@@ -140,6 +197,9 @@ def map(data, lat, lon, zoom):
         ]
     ))
 
+
+# STREAMLIT CODE BELOW #
+
 # LAYING OUT THE TOP SECTION OF THE APP
 title_container = st.container()
 with title_container:
@@ -163,14 +223,16 @@ with st.expander("Search Parameters", expanded=True):
     with row22:
         analysis_date_start = st.date_input("Covid Period Starts On", value=MIN_COVID_DATE_TIME)
     with row23:
-        date_end = st.time_input("Hour of the Day", )#, datetime.time(13,00))
+        hour_of_day =  st.number_input("Hour of the Day (0-23)", value=6, min_value=0, max_value=23) # st.time_input("Hour of the Day", )#, datetime.time(13,00))
     with row24:
         time_period = st.number_input("For the next", value=10, min_value=1)
     with row25:
-        option = st.selectbox("Time Unit", ("Hour", "Days", "Weeks", "Months", "Years")) #, "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays", "Sundays"))
+        time_frequency = st.selectbox("Time Unit", ("Hours", "Days", "Weeks", "Months", "Years")) #, "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays", "Sundays"))
 
-# FILTERING DATA BY HOUR SELECTED
-# data = data[data[DATE_TIME].dt.hour == baseline_hour_start]
+
+# FILTERING DATA BY INPUTS
+baseline_data, analysis_data = filter_data(full_data, baseline_date_start, analysis_date_start, hour_of_day, time_period, time_frequency)
+
 
 lat =  1.352083  #37.76
 lon = 103.819836 #-122.4
@@ -179,12 +241,12 @@ row41, row42 = st.columns((1,1))
 with row41:
     _date = datetime.strftime(baseline_date_start, "%Y-%m-%d")    
     st.markdown(f"##### Pre-Covid: Taxi Availability as on {_date}")
-    create_folium_choropleth(data.loc[_date], COUNTRY_GEO)    
+    create_folium_choropleth(baseline_data, COUNTRY_GEO, country_gdf)    
     # st.text(f'Nu {_date}')
 with row42:
     _analysis_date = datetime.strftime(analysis_date_start, "%Y-%m-%d")    
     st.markdown(f'##### Post-Covid: Taxi Availability as on {_analysis_date}')
-    create_folium_choropleth(data.loc[_analysis_date], COUNTRY_GEO)
+    create_folium_choropleth(analysis_data, COUNTRY_GEO, country_gdf)
 
 # FILTERING DATA FOR THE HISTOGRAM
 # filtered = data[
@@ -282,7 +344,7 @@ with row52:
          ),
      ],
     ))
-    option = st.selectbox("District", ("Changi Airport", "Choa Chu Kang", "CBD", "Toa Payoh"))
+    option = st.selectbox("District", districts, index=districts.index('CHANGI'))
     # st.line_chart(district_chart_data, use_container_width=True)
 # with row53:
 #     st.write("**Biggest Drop in Demand in:** Changi Airport ")
