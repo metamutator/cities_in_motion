@@ -23,18 +23,20 @@ from streamlit_folium import folium_static
 import folium
 import geopandas as gpd
 import json
+from shapely.geometry.polygon import Polygon
+from shapely.geometry.multipolygon import MultiPolygon
 
 # SETTING PAGE CONFIG TO WIDE MODE
 st.set_page_config(layout="wide")
 
 # LOADING DATA
-DATE_TIME = "date/time"
 MIN_DATE_TIME = datetime(2016, 9, 16, 13, 0, 0)
 MIN_COVID_DATE_TIME = datetime(2020, 4, 1, 0, 0, 0)
 MAX_DATE_TIME = datetime(2021, 10, 16, 13, 0, 0)
 COUNTRY_GEO = 'data/region1.geojson'
 
 st.sidebar.header("Filter by time")
+
 @st.cache(persist=True)
 def load_taxi_count():
     # processed_fname = f'gs://dva-sg-team105/processed_summary/processed_taxi_count.all.csv'
@@ -75,31 +77,44 @@ def load_country_gdf():
     fname = './data/region1.geojson'
 
     with open(fname, "rb") as f:
-        country_json = json.load(f)
-    # st.write(country_json)
+        country_json = json.load(f)    
     country_gdf = gpd.GeoDataFrame.from_features(country_json)
-    # st.write("reached here")
+    country_gdf["geometry"] = [MultiPolygon(feature) if type(feature) != Polygon else feature for feature in country_gdf["geometry"]]
+    # TUAS, SOUTHERN ISLANDS, WESTERN WATER CATCHMENT and other districts are GeometryCollection geometries in the source file. They don't play well with GeoJsonTooltip. Casting them all to
+    # MultiPolygon to ensure the GeoJson tooltip works. For more info, see: https://github.com/python-visualization/folium/issues/929
     return country_gdf
 country_gdf = load_country_gdf()
 
 def create_folium_choropleth(taxi_count_df, country_geo):
     # center on Singapore
     m = folium.Map(location=[1.3572, 103.8207], zoom_start=11)
+    bins = list(range(0, 1000, 100))
+    # taxi_count_df 
+    # country_geo    
+    # country_geo = country_geo["geometry"].apply(lambda x: Multipolygon(x))
 
-    folium.Choropleth(
-        geo_data=country_geo,
-        name="choropleth",
+    choropleth = folium.Choropleth(
+        geo_data=country_gdf.to_json(),
+        # name="choropleth",
         data=taxi_count_df,
         columns=["region", "taxi_count"],
-        key_on="feature.properties.name",
+        key_on="properties.name",
         fill_color="YlOrRd",
+        nan_fill_color="black",
+        nan_fill_opacity=0.5,
         fill_opacity=0.7,
         line_opacity=0.2,
+        bins=bins,
         legend_name="Taxi Count",
     ).add_to(m)
+    choropleth.geojson
+    choropleth.geojson.add_child(folium.GeoJsonTooltip(
+        fields=["name"], #, "description"],
+        aliases=['District'] #, 'Taxi Count']
+        ))
 
     # call to render Folium map in Streamlit
-    folium_static(m, width=650)
+    folium_static(m, width=750)
 
 # CREATING FUNCTION FOR MAPS
 
@@ -144,7 +159,8 @@ st.subheader("Summary (Islandwide)")
 with st.expander("Search Parameters", expanded=True):
     row21, row22, row23, row24, row25 = st.columns((1,1,1,1,1))
     with row21:
-        baseline_date_start = st.date_input("Baseline Starts On", value=MIN_DATE_TIME)
+        #Delta of (Baseline date + hour + for the next time unit - baseline date + hour)
+        baseline_date_start = st.date_input("Pre-Covid Period Starts On", value=MIN_DATE_TIME)
     with row22:
         analysis_date_start = st.date_input("Analysis Starts On", value=MIN_COVID_DATE_TIME)
     with row23:
@@ -163,12 +179,12 @@ lon = 103.819836 #-122.4
 row41, row42 = st.columns((1,1))
 with row41:
     _date = datetime.strftime(baseline_date_start, "%Y-%m-%d")    
-    st.markdown(f"##### Baseline as on {_date}")
+    st.markdown(f"##### Pre-Covid: Taxi Availability as on {_date}")
     create_folium_choropleth(data.loc[_date], COUNTRY_GEO)    
     # st.text(f'Nu {_date}')
 with row42:
     _analysis_date = datetime.strftime(analysis_date_start, "%Y-%m-%d")    
-    st.markdown(f'##### Analysis as on {_analysis_date}')
+    st.markdown(f'##### Post-Covid: Taxi Availability as on {_analysis_date}')
     create_folium_choropleth(data.loc[_analysis_date], COUNTRY_GEO)
 
 # FILTERING DATA FOR THE HISTOGRAM
@@ -198,7 +214,7 @@ st.write("")
 #         color='red'
 #     ), use_container_width=True)
 
-st.subheader("District by District Analysis")
+st.subheader("District Analysis")
 
 row51, row52 = st.columns((1,1))
 changi_lat = 1.3480297
