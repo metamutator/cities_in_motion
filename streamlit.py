@@ -99,15 +99,14 @@ def create_folium_choropleth(taxi_count_df, country_geo):
         data=taxi_count_df,
         columns=["region", "taxi_count"],
         key_on="properties.name",
-        fill_color="YlOrRd",
+        fill_color="RdBu",
         nan_fill_color="black",
         nan_fill_opacity=0.5,
         fill_opacity=0.7,
-        line_opacity=0.2,
+        line_opacity=0.8,
         bins=bins,
         legend_name="Taxi Count",
     ).add_to(m)
-    choropleth.geojson
     choropleth.geojson.add_child(folium.GeoJsonTooltip(
         fields=["name"], #, "description"],
         aliases=['District'] #, 'Taxi Count']
@@ -162,13 +161,13 @@ with st.expander("Search Parameters", expanded=True):
         #Delta of (Baseline date + hour + for the next time unit - baseline date + hour)
         baseline_date_start = st.date_input("Pre-Covid Period Starts On", value=MIN_DATE_TIME)
     with row22:
-        analysis_date_start = st.date_input("Analysis Starts On", value=MIN_COVID_DATE_TIME)
+        analysis_date_start = st.date_input("Covid Period Starts On", value=MIN_COVID_DATE_TIME)
     with row23:
-        date_end = st.time_input("Hour of the Day")#, datetime.time(13,00))
+        date_end = st.time_input("Hour of the Day", )#, datetime.time(13,00))
     with row24:
         time_period = st.number_input("For the next", value=10, min_value=1)
     with row25:
-        option = st.selectbox("Time Unit", ("Hour", "Days", "Weeks", "Months", "Years", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays", "Sundays"))
+        option = st.selectbox("Time Unit", ("Hour", "Days", "Weeks", "Months", "Years")) #, "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays", "Sundays"))
 
 # FILTERING DATA BY HOUR SELECTED
 # data = data[data[DATE_TIME].dt.hour == baseline_hour_start]
