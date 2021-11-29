@@ -132,10 +132,13 @@ def filter_data(full_data, baseline_date_start, analysis_date_start, hour_of_day
     return baseline_data, analysis_data
 
 
-def create_folium_choropleth(taxi_count_df, country_geo, country_gdf):
+def create_folium_choropleth(taxi_count_df, country_geo, country_gdf, max_count):
     # center on Singapore
     m = folium.Map(location=[1.3572, 103.8207], zoom_start=11)
-    bins = list(range(0, 1000, 100))
+
+    max_count_rounded = int((max_count // 100) + 2 ) * 100  # like math.ceil
+    bins = list(range(0, max_count_rounded, max_count_rounded // 10))
+    # bins = list(range(0, 1000, 100))
     # taxi_count_df 
     # country_geo    
     # country_geo = country_geo["geometry"].apply(lambda x: Multipolygon(x))
@@ -232,7 +235,7 @@ with st.expander("Search Parameters", expanded=True):
 
 # FILTERING DATA BY INPUTS
 baseline_data, analysis_data = filter_data(full_data, baseline_date_start, analysis_date_start, hour_of_day, time_period, time_frequency)
-
+max_count = max(baseline_data.taxi_count.max(), analysis_data.taxi_count.max())
 
 lat =  1.352083  #37.76
 lon = 103.819836 #-122.4
@@ -241,12 +244,12 @@ row41, row42 = st.columns((1,1))
 with row41:
     _date = datetime.strftime(baseline_date_start, "%Y-%m-%d")    
     st.markdown(f"##### Pre-Covid: Taxi Availability as on {_date}")
-    create_folium_choropleth(baseline_data, COUNTRY_GEO, country_gdf)    
+    create_folium_choropleth(baseline_data, COUNTRY_GEO, country_gdf, max_count)    
     # st.text(f'Nu {_date}')
 with row42:
     _analysis_date = datetime.strftime(analysis_date_start, "%Y-%m-%d")    
     st.markdown(f'##### Post-Covid: Taxi Availability as on {_analysis_date}')
-    create_folium_choropleth(analysis_data, COUNTRY_GEO, country_gdf)
+    create_folium_choropleth(analysis_data, COUNTRY_GEO, country_gdf, max_count)
 
 # FILTERING DATA FOR THE HISTOGRAM
 # filtered = data[
