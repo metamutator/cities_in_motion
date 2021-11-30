@@ -294,10 +294,10 @@ def taxigraph(dataset, region, hour, startdate, enddate):
     basedata = full_data.loc[full_data.region == region]
     basedata = basedata.reset_index()    
     basedata
-    startdate
+    startdate    
+    basedata['filename'] = pd.to_datetime(basedata['filename'])
     basedata = basedata[basedata["filename"] >= pd.to_datetime(startdate)]
     basedata = basedata[basedata["filename"] <= pd.to_datetime(enddate)]
-    basedata['filename'] = pd.to_datetime(basedata['filename'])
     basedata[ 'rolling_average' ] = basedata.taxi_count.rolling(90).mean()
     startdate
     basedata
