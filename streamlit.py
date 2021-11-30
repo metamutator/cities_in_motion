@@ -19,6 +19,9 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import altair as alt
+# import plotly.graph_objects as go
+import plotly.express as px
+# from altair import *
 import pydeck as pdk
 from streamlit_folium import folium_static
 import folium
@@ -76,9 +79,8 @@ def load_taxi_locations():
 # taxi_locations = load_taxi_locations()
 
 @st.cache(persist=True)
-def load_country_gdf():
-    # fname = f'gs://dva-sg-team105/region1.geojson'
-    fname = './data/region1.geojson'
+def load_country_gdf():    
+    fname = COUNTRY_GEO
 
     with open(fname, "rb") as f:
         country_json = json.load(f)    
@@ -86,6 +88,8 @@ def load_country_gdf():
     country_gdf["geometry"] = [MultiPolygon(feature) if type(feature) != Polygon else feature for feature in country_gdf["geometry"]]
     # TUAS, SOUTHERN ISLANDS, WESTERN WATER CATCHMENT and other districts are GeometryCollection geometries in the source file. They don't play well with GeoJsonTooltip. Casting them all to
     # MultiPolygon to ensure the GeoJson tooltip works. For more info, see: https://github.com/python-visualization/folium/issues/929
+    country_gdf["lat"] = country_gdf.centroid.x
+    country_gdf['long'] = country_gdf.centroid.y
     return country_gdf
 
 country_gdf = load_country_gdf()
@@ -138,16 +142,13 @@ def create_folium_choropleth(taxi_count_df, country_geo, country_gdf, max_count)
 
     max_count_rounded = int((max_count // 100) + 2 ) * 100  # like math.ceil
     bins = list(range(0, max_count_rounded, max_count_rounded // 10))
-    # bins = list(range(0, 1000, 100))
-    # taxi_count_df 
-    # country_geo    
-    # country_geo = country_geo["geometry"].apply(lambda x: Multipolygon(x))
+    
 
     # change country_gdf such that taxi count appears on tooltip
     data_on_date = taxi_count_df.copy()  # deepcopy
     country_gdf_on_date = country_gdf.copy()  # deepcopy
     districts_on_date = sorted(list(set(data_on_date.region.tolist())))
-    name_to_namecount_map = {d:d + ' ' + str(data_on_date.loc[data_on_date.region == d, 'taxi_count'].values[0]) for d in districts_on_date}
+    name_to_namecount_map = {d:d + " Taxis: {:.0f}".format(data_on_date.loc[data_on_date.region == d, 'taxi_count'].values[0]) for d in districts_on_date}
     data_on_date['region'] = data_on_date.region.map(name_to_namecount_map)
     data_on_date.dropna(subset=['region'], inplace=True)
     country_gdf_on_date['name'] = country_gdf_on_date.name.map(name_to_namecount_map)
@@ -196,7 +197,7 @@ def map(data, lat, lon, zoom):
                 elevation_range=[0, 1000],
                 pickable=True,
                 extruded=True,
-            ),
+            )
         ]
     ))
 
@@ -204,17 +205,17 @@ def map(data, lat, lon, zoom):
 # STREAMLIT CODE BELOW #
 
 # LAYING OUT THE TOP SECTION OF THE APP
-title_container = st.container()
-with title_container:
-    st.title("Cities in Motion")
-    # st.subheader(
-    # """
-    # Tracking how demand for taxis has changed over the years in Singapore. 
-    # """)
-    st.write(
-    """    
-    Examining how demand for taxi has varied because of Covid in Singapore. 
-    """)
+# title_container = st.container()
+# with title_container:
+st.title("Cities in Motion")
+# st.subheader(
+# """
+# Tracking how demand for taxis has changed over the years in Singapore. 
+# """)
+st.write(
+"""    
+Examining how demand for taxi has varied because of Covid in Singapore. 
+""")
 
 st.subheader("Summary (Islandwide)")
 
@@ -251,110 +252,98 @@ with row42:
     st.markdown(f'##### Post-Covid: Taxi Availability as on {_analysis_date}')
     create_folium_choropleth(analysis_data, COUNTRY_GEO, country_gdf, max_count)
 
-# FILTERING DATA FOR THE HISTOGRAM
-# filtered = data[
-#     (data[DATE_TIME].dt.hour >= baseline_hour_start) & (data[DATE_TIME].dt.hour < (baseline_hour_start + 1))
-#     ]
+combined_data = pd.merge(baseline_data, analysis_data, on=['region'], how='outer').rename(columns={'region':'District', 'taxi_count_x':'Pre-Covid', 'taxi_count_y':'Post Covid'})
+combined_data["Delta"] = abs(combined_data["Post Covid"] - combined_data["Pre-Covid"])
+combined_data = combined_data.sort_values(by=['Delta'], ascending=False)
+# country_gdf
+# combined_data = pd.merge(combined_data, country_gdf[["name", "lat", "long"]], left_on=['District'], right_on=['name'], how='outer').drop(["name"], axis=1)
+ 
+combined_data_head = combined_data.head(15)
+combined_data_tail = combined_data.tail(15)
 
-# hist = np.histogram(filtered[DATE_TIME].dt.minute, bins=24, range=(0, 24))[0]
+melted_combined_data_head = combined_data_head.melt(id_vars=['District'], value_vars=['Pre-Covid', 'Post Covid'], var_name='Period', value_name='Taxi Count')
+melted_combined_data_tail = combined_data_tail.melt(id_vars=['District'], value_vars=['Pre-Covid', 'Post Covid'], var_name='Period', value_name='Taxi Count')
 
-# chart_data = pd.DataFrame({"hour": range(24), "demand": hist})
+summary_graph_plotly_head = px.bar(melted_combined_data_head, x='District', y='Taxi Count', color='Period', barmode='group', width=400, height=400, title="Top 15 Districts")
+summary_graph_plotly_tail = px.bar(melted_combined_data_tail, x='District', y='Taxi Count', color='Period', barmode='group', width=400, height=400, title="Bottom 15 Districts")
+st.markdown(f'##### District-wise Change')
 
-# LAYING OUT THE HISTOGRAM SECTION
+row51, row52 = st.columns((1,1))
+with row51:    
+    st.plotly_chart(summary_graph_plotly_head, use_container_width=True)
+with row52:    
+    st.plotly_chart(summary_graph_plotly_tail, use_container_width=True)
 
-st.write("")
+row61, row62 = st.columns((1,1))
+# with row61:
 
-# st.write("**Breakdown of Taxi Demand**") # between %i:00 and %i:00**" % (baseline_hour_start, (baseline_hour_start + 23) % 24))
-
-# st.altair_chart(alt.Chart(chart_data)
-#     .mark_area(
-#         interpolate='step-after',
-#     ).encode(
-#         x=alt.X("hour:Q", scale=alt.Scale(nice=False)),
-#         y=alt.Y("demand:Q"),
-#         tooltip=['hour', 'demand']
-#     ).configure_mark(
-#         opacity=0.2,
-#         color='red'
-#     ), use_container_width=True)
+#----------------------------
 
 st.subheader("District Analysis")
 
-row51, row52 = st.columns((1,1))
-changi_lat = 1.3480297
-changi_lon = 103.9793892
-overall_chart_data = pd.DataFrame(np.random.randn(1000, 2)/ [50, 50] + [lat, lon], columns= ['lat', 'lon'])
-district_chart_data = pd.DataFrame(np.random.randn(500, 2)/ [150, 150] + [changi_lat, changi_lon], columns= ['lat', 'lon'])
-drop_chart_data = pd.DataFrame(np.random.randn(300, 2), columns=['Baseline Projection', 'Actual'])
-with row51:
-    st.write("**Overall Taxi Demand - Projection versus Actual**")
-    st.pydeck_chart(pdk.Deck(
-        map_style='mapbox://styles/mapbox/light-v9',
-        initial_view_state=pdk.ViewState(
-        latitude=lat,
-        longitude=lon,
-        zoom=11,
-        pitch=50,
-     ),
-     layers=[
-        pdk.Layer(
-            'HexagonLayer',
-            data=overall_chart_data,
-            get_position='[lon, lat]',
-            radius=200,
-            elevation_scale=4,
-            elevation_range=[0, 1000],
-            pickable=True,
-            extruded=True,
-        ),
-        pdk.Layer(
-            'ScatterplotLayer',
-            data=overall_chart_data,
-            get_position='[lon, lat]',
-            get_color='[200, 30, 0, 160]',
-            get_radius=200,
-         ),
-     ],
-    ))
-    # st.line_chart(overall_chart_data, use_container_width=True)    
-with row52:
-    st.write("**Taxi Demand For Individual Districts**")        
-    st.pydeck_chart(pdk.Deck(
-        map_style='mapbox://styles/mapbox/light-v9',
-        initial_view_state=pdk.ViewState(
-        latitude=changi_lat, #lat,
-        longitude=changi_lon, #long,
-        zoom=12,
-        pitch=50,
-     ),
-     layers=[
-        pdk.Layer(
-            'HexagonLayer',
-            data=district_chart_data,
-            get_position='[lon, lat]',
-            radius=200,
-            elevation_scale=4,
-            elevation_range=[0, 1000],
-            pickable=True,
-            extruded=True,
-        ),
-        pdk.Layer(
-            'ScatterplotLayer',
-            data=district_chart_data,
-            get_position='[lon, lat]',
-            get_color='[200, 30, 0, 160]',
-            get_radius=200,
-         ),
-     ],
-    ))
-    option = st.selectbox("District", districts, index=districts.index('CHANGI'))
-    # st.line_chart(district_chart_data, use_container_width=True)
-# with row53:
-#     st.write("**Biggest Drop in Demand in:** Changi Airport ")
-#     # option = st.selectbox("District", ("Choa Chu Kang", "Changi Airport", "CBD", "Toa Payoh"))
-#     st.line_chart(drop_chart_data, use_container_width=True)        
-# with row54:
-#     st.write("**Trends**")
-#     st.write("1. **Overall Fleet Occupancy**:")
-#     st.write("    a. Baseline: **58.52%**")
-#     st.write("    b. Current: **48.36%**")
+def taxigraph(dataset, region, hour, startdate, enddate):
+    """
+    dataset: full_data = load_taxi_count()
+    region: expects string eg. 'ANG MO KIO'
+    hour: hour of the day, integer [0:23]
+    startdate: 'Pre-Covid Period Starts On' date
+    enddate: 'Covid Period Starts On' date
+    """
+    basedata = full_data.copy()
+    basedata = basedata[basedata.index.hour == hour]
+    basedata = full_data.loc[full_data.region == region]
+    basedata = basedata.reset_index()    
+    basedata
+    startdate
+    basedata = basedata[basedata["filename"] >= pd.to_datetime(startdate)]
+    basedata = basedata[basedata["filename"] <= pd.to_datetime(enddate)]
+    basedata['filename'] = pd.to_datetime(basedata['filename'])
+    basedata[ 'rolling_average' ] = basedata.taxi_count.rolling(90).mean()
+    startdate
+    basedata
+    return basedata
+
+
+
+row61, row62 = st.columns((1,1))
+with row61:
+    selected_district_1 = st.selectbox("Select District 1:", list(combined_data.District.unique()))
+
+    district_1_data = taxigraph(full_data, selected_district_1, hour_of_day, analysis_date_start, baseline_date_start)
+    fig1 = px.line(district_1_data, x='filename', y='taxi_count', title=f'Taxi Data for {selected_district_1}')
+    st.plotly_chart(fig1, use_container_width=True)
+with row62:
+    selected_district_2 = st.selectbox("Select District 2:", list(combined_data.District.unique()))
+    district_2_data = taxigraph(full_data, selected_district_2, hour_of_day, analysis_date_start, baseline_date_start)
+    fig2 = px.line(district_2_data, x='filename', y='taxi_count', title=f'Taxi Data for {selected_district_2}')
+    st.plotly_chart(fig2, use_container_width=True)
+
+
+  # plt.style.use("dark_background") # If black background works better
+  # plt.ylim(0, 700) # To lock the axis if doing comparative
+
+#   plt.figure( figsize = ( 12, 5))
+  
+
+#   sns.lineplot( x = 'filename',
+#               y = 'taxi_count',
+#               data = basedata,
+#               label = 'Taxi Count').set(title='Taxi Count Over Time')
+
+#   # plot using rolling average
+#   sns.lineplot( x = 'filename',
+#               y = 'rolling_average',
+#               data = basedata,
+#               linewidth = 3,
+#               label = '3 Month Moving Average')
+    
+#   plt.xlabel( 'Time')
+#   plt.ylabel('Taxi Count')
+  
+
+#   return
+
+# Sample use
+# taxigraph(df, 'CHANGI', 9,'2017-09-17', '2020-09-17')
+# taxigraph(df, 'CHANGI', 20,'2017-09-17', '2020-09-17')
+# taxigraph(df, 'ANG MO KIO', 20,'2017-09-17', '2020-09-17')
