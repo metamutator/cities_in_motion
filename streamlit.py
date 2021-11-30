@@ -111,10 +111,6 @@ def filter_data(full_data, baseline_date_start, analysis_date_start, hour_of_day
             return timedelta(days=p)
         elif time_frequency.lower() == 'weeks':
             return timedelta(weeks=p)
-        elif time_frequency.lower() == 'months':
-            return timedelta(months=p*30)  # just a hack
-        elif time_frequency.lower() == 'months':
-            return timedelta(years=p*365)  # just a hack
 
     baseline_from = date_to_datetime(baseline_date_start) + timedelta(hours=int(hour_of_day))
     baseline_to = baseline_from + get_time_delta(time_period, time_frequency)
@@ -131,10 +127,18 @@ def filter_data(full_data, baseline_date_start, analysis_date_start, hour_of_day
     # st.write(analysis_from, analysis_to)  # debug
 
     baseline_data = full_data.loc[baseline_from:baseline_to].copy()
+    baseline_data["hour"] = baseline_data.index.hour
+    baseline_data["hour"] = baseline_data["hour"].astype(int)
+    baseline_data = baseline_data[baseline_data["hour"]==int(hour_of_day)]
+    baseline_data.drop('hour', axis=1, inplace=True)
     baseline_data = baseline_data.groupby('region').mean().round().reset_index()  # take mean across all hourly data
     # st.write(baseline_data)  # debug
 
     analysis_data = full_data.loc[analysis_from:analysis_to].copy()
+    analysis_data["hour"] = analysis_data.index.hour
+    analysis_data["hour"] = analysis_data["hour"].astype(int)
+    analysis_data = analysis_data[analysis_data["hour"]==int(hour_of_day)]
+    analysis_data.drop('hour', axis=1, inplace=True)
     analysis_data = analysis_data.groupby('region').mean().round().reset_index()  # take mean across all hourly data
     # st.write(analysis_data)  # debug
 
@@ -237,13 +241,23 @@ with st.expander("Search Parameters", expanded=True):
         time_period = st.number_input("For the next", value=10, min_value=1)
     with row25:
         # frequency_list = ("Hours", "Days", "Weeks", "Months", "Years")
-        frequency_list = ("Hours", "Days", "Weeks")
-        time_frequency = st.selectbox("Time Unit", frequency_list)
+        frequency_list = ["Hours", "Days", "Weeks"]
+        time_frequency = st.selectbox("Time Unit", frequency_list, index=frequency_list.index("Days"))
 
 
 # FILTERING DATA BY INPUTS
 baseline_data, analysis_data = filter_data(full_data, baseline_date_start, analysis_date_start, hour_of_day, time_period, time_frequency)
-max_count = max(baseline_data.taxi_count.max(), analysis_data.taxi_count.max())
+
+if np.isnan(baseline_data.taxi_count.max()):
+    max_count = analysis_data.taxi_count.max()
+elif np.isnan(analysis_data.taxi_count.max()):
+    max_count = baseline_data.taxi_count.max()
+else:
+    max_count = max(baseline_data.taxi_count.max(), analysis_data.taxi_count.max())
+# st.write(baseline_data.taxi_count.max())
+# st.write(analysis_data.taxi_count.max())
+
+
 
 lat =  1.352083  #37.76
 lon = 103.819836 #-122.4
@@ -257,7 +271,7 @@ with row41:
         create_folium_choropleth(baseline_data, COUNTRY_GEO, country_gdf, max_count)
     else:
         # invalid input
-        st.write("Pre-Covid start date must be between 2016/09/16 and 2020/04/01")
+        st.write("Pre-Covid start date must be between 2016-09-16 13:00 and 2020-04-01 00:00")
 with row42:
     analysis_from = date_to_datetime(analysis_date_start) + timedelta(hours=int(hour_of_day))
     if (analysis_from >= MIN_COVID_DATE_TIME) and (analysis_from <= MAX_DATE_TIME):
@@ -266,7 +280,7 @@ with row42:
         create_folium_choropleth(analysis_data, COUNTRY_GEO, country_gdf, max_count)
     else:
         # invalid input
-        st.write("Pre-Covid start date must be between 2020/04/01 and 2021/10/01")
+        st.write("Pre-Covid start date must be between 2020-04-01 00:00 and 2021-10-01 00:00")
 
 combined_data = pd.merge(baseline_data, analysis_data, on=['region'], how='outer').rename(columns={'region':'District', 'taxi_count_x':'Pre-Covid', 'taxi_count_y':'Post Covid'})
 combined_data["Delta"] = abs(combined_data["Post Covid"] - combined_data["Pre-Covid"])
@@ -309,35 +323,27 @@ def taxigraph(dataset, region, hour, startdate, enddate):
         return datetime(t.year, t.month, t.day)
 
     basedata = full_data.copy()
-    basedata = basedata[basedata.index.hour == hour]
-    basedata = basedata.loc[basedata.region == region]
-    
-    # basedata
-    # st.write(startdate, enddate)
-    basedata = basedata.loc[date_to_datetime(startdate):date_to_datetime(enddate)]
-    basedata
-    basedata = basedata.reset_index()
-    # basedata['filename'] = pd.to_datetime(basedata['filename'])
-    # basedata = basedata[basedata["filename"] >= pd.to_datetime(startdate)]
-    # basedata = basedata[basedata["filename"] <= pd.to_datetime(enddate)]
-    basedata[ 'rolling_average' ] = basedata.taxi_count.rolling(90).mean()
-    # startdate
-    basedata
-    return basedata
 
+    basedata = basedata.loc[str(startdate):str(enddate)]  # date
+    basedata = basedata[basedata.index.hour == hour]  # hour
+    basedata = basedata.loc[basedata.region == region]  # region
+    
+    basedata = basedata.reset_index()
+    basedata[ 'rolling_average' ] = basedata.taxi_count.rolling(90).mean()
+    return basedata
 
 
 row61, row62 = st.columns((1,1))
 with row61:
     selected_district_1 = st.selectbox("Select District 1:", list(combined_data.District.unique()))
 
-    district_1_data = taxigraph(full_data, selected_district_1, hour_of_day, analysis_date_start, baseline_date_start)
-    fig1 = px.line(district_1_data, x='filename', y='taxi_count', title=f'Taxi Data for {selected_district_1}')
+    district_1_data = taxigraph(full_data, selected_district_1, hour_of_day, baseline_date_start, analysis_date_start)
+    fig1 = px.line(district_1_data, x='filename', y=['taxi_count', 'rolling_average'], title=f'Taxi Data for {selected_district_1}')
     st.plotly_chart(fig1, use_container_width=True)
 with row62:
     selected_district_2 = st.selectbox("Select District 2:", list(combined_data.District.unique()))
-    district_2_data = taxigraph(full_data, selected_district_2, hour_of_day, analysis_date_start, baseline_date_start)
-    fig2 = px.line(district_2_data, x='filename', y='taxi_count', title=f'Taxi Data for {selected_district_2}')
+    district_2_data = taxigraph(full_data, selected_district_2, hour_of_day, baseline_date_start, analysis_date_start)
+    fig2 = px.line(district_2_data, x='filename', y=['taxi_count', 'rolling_average'], title=f'Taxi Data for {selected_district_2}')
     st.plotly_chart(fig2, use_container_width=True)
 
 
