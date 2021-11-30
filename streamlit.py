@@ -40,7 +40,13 @@ MAX_DATE_TIME = datetime(2021, 10, 16, 13, 0, 0)
 COUNTRY_GEO = 'data/region1.geojson'
 EXCLUDED_DISTRICTS = ['CHANGI BAY', 'LIM CHU KANG', 'SIMPANG']
 
-st.sidebar.header("Filter by time")
+# st.sidebar.header("Filter by time")
+
+
+def date_to_datetime(t):
+    # helper method
+    return datetime(t.year, t.month, t.day)
+
 
 @st.cache(persist=True)
 def load_taxi_count():
@@ -95,8 +101,7 @@ def load_country_gdf():
 country_gdf = load_country_gdf()
 
 def filter_data(full_data, baseline_date_start, analysis_date_start, hour_of_day, time_period, time_frequency):
-    def date_to_datetime(t):
-        return datetime(t.year, t.month, t.day)
+
 
     def get_time_delta(time_period, time_frequency):
         p = int(time_period)
@@ -223,15 +228,17 @@ with st.expander("Search Parameters", expanded=True):
     row21, row22, row23, row24, row25 = st.columns((1,1,1,1,1))
     with row21:
         #Delta of (Baseline date + hour + for the next time unit - baseline date + hour)
-        baseline_date_start = st.date_input("Pre-Covid Period Starts On", value=MIN_DATE_TIME)
+        baseline_date_start = st.date_input("Pre-Covid Period Starts On", value=MIN_DATE_TIME, min_value=MIN_DATE_TIME, max_value=MIN_COVID_DATE_TIME)
     with row22:
-        analysis_date_start = st.date_input("Covid Period Starts On", value=MIN_COVID_DATE_TIME)
+        analysis_date_start = st.date_input("Covid Period Starts On", value=MIN_COVID_DATE_TIME, min_value=MIN_COVID_DATE_TIME, max_value=MAX_DATE_TIME)
     with row23:
-        hour_of_day =  st.number_input("Hour of the Day (0-23)", value=6, min_value=0, max_value=23) # st.time_input("Hour of the Day", )#, datetime.time(13,00))
+        hour_of_day =  st.number_input("Hour of the Day (0-23)", value=20, min_value=0, max_value=23)
     with row24:
         time_period = st.number_input("For the next", value=10, min_value=1)
     with row25:
-        time_frequency = st.selectbox("Time Unit", ("Hours", "Days", "Weeks", "Months", "Years")) #, "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays", "Sundays"))
+        # frequency_list = ("Hours", "Days", "Weeks", "Months", "Years")
+        frequency_list = ("Hours", "Days", "Weeks")
+        time_frequency = st.selectbox("Time Unit", frequency_list)
 
 
 # FILTERING DATA BY INPUTS
@@ -243,14 +250,23 @@ lon = 103.819836 #-122.4
 
 row41, row42 = st.columns((1,1))
 with row41:
-    _date = datetime.strftime(baseline_date_start, "%Y-%m-%d")    
-    st.markdown(f"##### Pre-Covid: Taxi Availability as on {_date}")
-    create_folium_choropleth(baseline_data, COUNTRY_GEO, country_gdf, max_count)    
-    # st.text(f'Nu {_date}')
+    baseline_from = date_to_datetime(baseline_date_start) + timedelta(hours=int(hour_of_day))
+    if (baseline_from >= MIN_DATE_TIME) and (baseline_from <= MIN_COVID_DATE_TIME):
+        _date = datetime.strftime(baseline_date_start, "%Y-%m-%d")    
+        st.markdown(f"##### Pre-Covid: Taxi Availability as on {_date}")
+        create_folium_choropleth(baseline_data, COUNTRY_GEO, country_gdf, max_count)
+    else:
+        # invalid input
+        st.write("Pre-Covid start date must be between 2016/09/16 and 2020/04/01")
 with row42:
-    _analysis_date = datetime.strftime(analysis_date_start, "%Y-%m-%d")    
-    st.markdown(f'##### Post-Covid: Taxi Availability as on {_analysis_date}')
-    create_folium_choropleth(analysis_data, COUNTRY_GEO, country_gdf, max_count)
+    analysis_from = date_to_datetime(analysis_date_start) + timedelta(hours=int(hour_of_day))
+    if (analysis_from >= MIN_COVID_DATE_TIME) and (analysis_from <= MAX_DATE_TIME):
+        _analysis_date = datetime.strftime(analysis_date_start, "%Y-%m-%d")    
+        st.markdown(f'##### Post-Covid: Taxi Availability as on {_analysis_date}')
+        create_folium_choropleth(analysis_data, COUNTRY_GEO, country_gdf, max_count)
+    else:
+        # invalid input
+        st.write("Pre-Covid start date must be between 2020/04/01 and 2021/10/01")
 
 combined_data = pd.merge(baseline_data, analysis_data, on=['region'], how='outer').rename(columns={'region':'District', 'taxi_count_x':'Pre-Covid', 'taxi_count_y':'Post Covid'})
 combined_data["Delta"] = abs(combined_data["Post Covid"] - combined_data["Pre-Covid"])
@@ -289,17 +305,23 @@ def taxigraph(dataset, region, hour, startdate, enddate):
     startdate: 'Pre-Covid Period Starts On' date
     enddate: 'Covid Period Starts On' date
     """
+    def date_to_datetime(t):
+        return datetime(t.year, t.month, t.day)
+
     basedata = full_data.copy()
     basedata = basedata[basedata.index.hour == hour]
-    basedata = full_data.loc[full_data.region == region]
-    basedata = basedata.reset_index()    
+    basedata = basedata.loc[basedata.region == region]
+    
+    # basedata
+    # st.write(startdate, enddate)
+    basedata = basedata.loc[date_to_datetime(startdate):date_to_datetime(enddate)]
     basedata
-    startdate    
-    basedata['filename'] = pd.to_datetime(basedata['filename'])
-    basedata = basedata[basedata["filename"] >= pd.to_datetime(startdate)]
-    basedata = basedata[basedata["filename"] <= pd.to_datetime(enddate)]
+    basedata = basedata.reset_index()
+    # basedata['filename'] = pd.to_datetime(basedata['filename'])
+    # basedata = basedata[basedata["filename"] >= pd.to_datetime(startdate)]
+    # basedata = basedata[basedata["filename"] <= pd.to_datetime(enddate)]
     basedata[ 'rolling_average' ] = basedata.taxi_count.rolling(90).mean()
-    startdate
+    # startdate
     basedata
     return basedata
 
