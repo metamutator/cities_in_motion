@@ -362,7 +362,7 @@ with row61:
     district_1_data = taxigraph(full_data, selected_district_1, hour_of_day, baseline_date_start, analysis_date_start)
     # district_1_data["date"] = district_1_data["filename"].apply(lambda x:datetime.strftime(x, "%Y-%m-%d"))
     # district_1_data
-    fig1 = px.line(district_1_data, x='date', y=['taxi_count', 'rolling_average'],
+    fig1 = px.line(district_1_data, x='filename', y=['taxi_count', 'rolling_average'],
         # animation_group="taxi_count", animation_frame="date",\
         title=f'Taxi Data for {selected_district_1} at {hour_of_day} hours')
     st.plotly_chart(fig1, use_container_width=True)
