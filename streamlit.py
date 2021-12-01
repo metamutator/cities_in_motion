@@ -18,8 +18,6 @@ from datetime import datetime, timedelta
 import streamlit as st
 import pandas as pd
 import numpy as np
-import altair as alt
-# import plotly.graph_objects as go
 import plotly.express as px
 # from altair import *
 import pydeck as pdk
@@ -144,6 +142,28 @@ def filter_data(full_data, baseline_date_start, analysis_date_start, hour_of_day
 
     return baseline_data, analysis_data
 
+# @st.cache(persist=True)
+def taxigraph(dataset, region, hour, startdate, enddate):
+    """
+    dataset: full_data = load_taxi_count()
+    region: expects string eg. 'ANG MO KIO'
+    hour: hour of the day, integer [0:23]
+    startdate: 'Pre-Covid Period Starts On' date
+    enddate: 'Covid Period Starts On' date
+    """
+    def date_to_datetime(t):
+        return datetime(t.year, t.month, t.day)
+
+    basedata = full_data.copy()
+
+    basedata = basedata.loc[str(startdate):str(enddate)]  # date
+    basedata = basedata[basedata.index.hour == hour]  # hour
+    if region != "All":
+        basedata = basedata.loc[basedata.region == region]  # region
+    
+    basedata = basedata.reset_index()
+    basedata[ 'rolling_average' ] = basedata.taxi_count.rolling(90).mean()
+    return basedata
 
 def create_folium_choropleth(taxi_count_df, country_geo, country_gdf, max_count):
     # center on Singapore
@@ -184,6 +204,8 @@ def create_folium_choropleth(taxi_count_df, country_geo, country_gdf, max_count)
 
     # call to render Folium map in Streamlit
     folium_static(m, width=750)
+
+
 
 # CREATING FUNCTION FOR MAPS
 
@@ -257,11 +279,6 @@ else:
 # st.write(baseline_data.taxi_count.max())
 # st.write(analysis_data.taxi_count.max())
 
-
-
-lat =  1.352083  #37.76
-lon = 103.819836 #-122.4
-
 row41, row42 = st.columns((1,1))
 with row41:
     baseline_from = date_to_datetime(baseline_date_start) + timedelta(hours=int(hour_of_day))
@@ -296,8 +313,8 @@ melted_combined_data_tail = combined_data_tail.melt(id_vars=['District'], value_
 
 summary_graph_plotly_head = px.bar(melted_combined_data_head, x='District', y='Taxi Count', color='Period', barmode='group', width=400, height=400, title="Top 15 Districts")
 summary_graph_plotly_tail = px.bar(melted_combined_data_tail, x='District', y='Taxi Count', color='Period', barmode='group', width=400, height=400, title="Bottom 15 Districts")
-st.markdown(f'##### District-wise Change')
 
+st.markdown(f'##### District-wise Change')
 row51, row52 = st.columns((1,1))
 with row51:    
     st.plotly_chart(summary_graph_plotly_head, use_container_width=True)
@@ -306,72 +323,37 @@ with row52:
 
 row61, row62 = st.columns((1,1))
 # with row61:
+#----------------------------ANIMATED GRAPH----------------------------
+all_districts_data = taxigraph(full_data, "All", hour_of_day, baseline_date_start, analysis_date_start)
+all_districts_data["date"] = all_districts_data["filename"].apply(lambda x: pd.to_datetime(x))
+all_districts_data = all_districts_data.drop(columns=["rolling_average"])
+# all_districts_data["date_str"] = all_districts_data["filename"].apply(lambda x:datetime.strftime(x, "%Y-%m-%d"))
+all_districts_data = all_districts_data.groupby([all_districts_data.region.rename("District"),\
+    all_districts_data.date.dt.year.rename("year"), all_districts_data.date.dt.month.rename("month")]).agg({'taxi_count':"sum"}).reset_index()
+all_districts_data["Date"] = all_districts_data["year"].astype(str) + "-" + all_districts_data["month"].astype(str)
+all_districts_data = all_districts_data.drop(columns=["year", "month"])
+max_taxi_count = all_districts_data.taxi_count.max()
 
+
+fig3 = px.bar(all_districts_data, x='District', y='taxi_count', color='District', animation_frame="Date",\
+    animation_group="District", \
+        hover_name='District', range_y=[0, max_taxi_count], range_x=[0,30], title=f"Top 30 Districts By Available Taxis at {hour_of_day} hours (grouped by month)")\
+            .update_xaxes(categoryorder="total descending")
+st.plotly_chart(fig3, use_container_width=True)
 #----------------------------
 
 st.subheader("District Analysis")
-
-def taxigraph(dataset, region, hour, startdate, enddate):
-    """
-    dataset: full_data = load_taxi_count()
-    region: expects string eg. 'ANG MO KIO'
-    hour: hour of the day, integer [0:23]
-    startdate: 'Pre-Covid Period Starts On' date
-    enddate: 'Covid Period Starts On' date
-    """
-    def date_to_datetime(t):
-        return datetime(t.year, t.month, t.day)
-
-    basedata = full_data.copy()
-
-    basedata = basedata.loc[str(startdate):str(enddate)]  # date
-    basedata = basedata[basedata.index.hour == hour]  # hour
-    basedata = basedata.loc[basedata.region == region]  # region
-    
-    basedata = basedata.reset_index()
-    basedata[ 'rolling_average' ] = basedata.taxi_count.rolling(90).mean()
-    return basedata
-
 
 row61, row62 = st.columns((1,1))
 with row61:
     selected_district_1 = st.selectbox("Select District 1:", list(combined_data.District.unique()))
 
     district_1_data = taxigraph(full_data, selected_district_1, hour_of_day, baseline_date_start, analysis_date_start)
-    fig1 = px.line(district_1_data, x='filename', y=['taxi_count', 'rolling_average'], title=f'Taxi Data for {selected_district_1}')
+    fig1 = px.line(district_1_data, x='filename', y=['taxi_count', 'rolling_average'], title=f'Taxi Data for {selected_district_1} at {hour_of_day} hours')
     st.plotly_chart(fig1, use_container_width=True)
 with row62:
     selected_district_2 = st.selectbox("Select District 2:", list(combined_data.District.unique()))
     district_2_data = taxigraph(full_data, selected_district_2, hour_of_day, baseline_date_start, analysis_date_start)
-    fig2 = px.line(district_2_data, x='filename', y=['taxi_count', 'rolling_average'], title=f'Taxi Data for {selected_district_2}')
+    fig2 = px.line(district_2_data, x='filename', y=['taxi_count', 'rolling_average'], title=f'Taxi Data for {selected_district_2} at {hour_of_day} hours')
     st.plotly_chart(fig2, use_container_width=True)
 
-
-  # plt.style.use("dark_background") # If black background works better
-  # plt.ylim(0, 700) # To lock the axis if doing comparative
-
-#   plt.figure( figsize = ( 12, 5))
-  
-
-#   sns.lineplot( x = 'filename',
-#               y = 'taxi_count',
-#               data = basedata,
-#               label = 'Taxi Count').set(title='Taxi Count Over Time')
-
-#   # plot using rolling average
-#   sns.lineplot( x = 'filename',
-#               y = 'rolling_average',
-#               data = basedata,
-#               linewidth = 3,
-#               label = '3 Month Moving Average')
-    
-#   plt.xlabel( 'Time')
-#   plt.ylabel('Taxi Count')
-  
-
-#   return
-
-# Sample use
-# taxigraph(df, 'CHANGI', 9,'2017-09-17', '2020-09-17')
-# taxigraph(df, 'CHANGI', 20,'2017-09-17', '2020-09-17')
-# taxigraph(df, 'ANG MO KIO', 20,'2017-09-17', '2020-09-17')
