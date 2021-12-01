@@ -46,7 +46,7 @@ def date_to_datetime(t):
     return datetime(t.year, t.month, t.day)
 
 
-@st.cache(persist=True)
+@st.cache(persist=True, allow_output_mutation=True, suppress_st_warning=True)
 def load_taxi_count():
     # processed_fname = f'gs://dva-sg-team105/processed_summary/processed_taxi_count.all.csv'
     year_dfs = [pd.read_csv(f'./data/analysis/processed_taxi_count.{year}.csv', index_col=0) for year in
@@ -72,7 +72,7 @@ full_data = load_taxi_count()
 districts = sorted(list(set(full_data.region) - set(EXCLUDED_DISTRICTS)))
 
 
-@st.cache(persist=True)
+@st.cache(persist=True, allow_output_mutation=True, suppress_st_warning=True)
 def load_taxi_locations():
     # fname = f'gs://dva-sg-team105/processed/2021/taxi_region.20211001000000.csv'
     fname = './data/processed/2021/taxi_region.20211001000000.csv'  # not available
@@ -87,7 +87,7 @@ def load_taxi_locations():
 
 # taxi_locations = load_taxi_locations()
 
-@st.cache(persist=True)
+@st.cache(persist=True, allow_output_mutation=True, suppress_st_warning=True)
 def load_country_gdf():
     fname = COUNTRY_GEO
 
@@ -105,7 +105,7 @@ def load_country_gdf():
 
 country_gdf = load_country_gdf()
 
-
+@st.cache(persist=True, allow_output_mutation=True, suppress_st_warning=True)
 def filter_data(full_data, baseline_date_start, analysis_date_start, hour_of_day, time_period, time_frequency):
     def get_time_delta(time_period, time_frequency):
         p = int(time_period)
@@ -148,7 +148,7 @@ def filter_data(full_data, baseline_date_start, analysis_date_start, hour_of_day
 
     return baseline_data, analysis_data
 
-# @st.cache(persist=True)
+@st.cache(persist=True, allow_output_mutation=True, suppress_st_warning=True)
 def taxigraph(dataset, region, hour, startdate, enddate):
     """
     dataset: full_data = load_taxi_count()
@@ -360,7 +360,11 @@ with row61:
     selected_district_1 = st.selectbox("Select District 1:", list(combined_data.District.unique()))
 
     district_1_data = taxigraph(full_data, selected_district_1, hour_of_day, baseline_date_start, analysis_date_start)
-    fig1 = px.line(district_1_data, x='filename', y=['taxi_count', 'rolling_average'], title=f'Taxi Data for {selected_district_1} at {hour_of_day} hours')
+    # district_1_data["date"] = district_1_data["filename"].apply(lambda x:datetime.strftime(x, "%Y-%m-%d"))
+    # district_1_data
+    fig1 = px.line(district_1_data, x='date', y=['taxi_count', 'rolling_average'],
+        # animation_group="taxi_count", animation_frame="date",\
+        title=f'Taxi Data for {selected_district_1} at {hour_of_day} hours')
     st.plotly_chart(fig1, use_container_width=True)
 
 
