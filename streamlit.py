@@ -289,8 +289,8 @@ elif np.isnan(analysis_data.taxi_count.max()):
     max_count = baseline_data.taxi_count.max()
 else:
     max_count = max(baseline_data.taxi_count.max(), analysis_data.taxi_count.max())
-# st.write(baseline_data.taxi_count.max())
-# st.write(analysis_data.taxi_count.max())
+# # st.write(baseline_data.taxi_count.max())
+# # st.write(analysis_data.taxi_count.max())
 
 row41, row42 = st.columns((1, 1))
 with row41:
@@ -385,12 +385,12 @@ with row61:
     district_1_data = taxigraph(full_data, selected_district_1, hour_of_day, baseline_date_start, MAX_DATE_TIME)
     fig1 = px.line(district_1_data, x='filename', y=['taxi_count', 'rolling_average'],
                    labels={"filename": "Time", "value": "Taxi Count"},
-                   title=f'Taxi Data for {selected_district_1} at {hour_of_day} hours')
+                   title=f'Taxi Demand in {selected_district_1} at {hour_of_day}:00 hours')
 
     fig1.update_xaxes(showgrid=False).update_yaxes(showgrid=False) # turn on gridlines if desired
 
     # add these event lines, specified by x-position
-    lines = {'a': '2020-02-17', 'b': '2020-04-03', 'c': '2020-06-01'}
+    lines = {'a': '2020-02-17', 'b': '2020-04-03', 'c': '2020-06-02'}
     for k in lines.keys():
         fig1.add_shape(type='line',
                       yref="y",
@@ -414,12 +414,12 @@ with row62:
     district_2_data = taxigraph(full_data, selected_district_2, hour_of_day, baseline_date_start, MAX_DATE_TIME)
     fig2 = px.line(district_2_data, x='filename', y=['taxi_count', 'rolling_average'],
                    labels={"filename": "Time", "value": "Taxi Count"},
-                   title=f'Taxi Data for {selected_district_2} at {hour_of_day} hours')
+                   title=f'Taxi Demand in {selected_district_2} at {hour_of_day}:00 hours')
 
     fig2.update_xaxes(showgrid=False).update_yaxes(showgrid=False)  # turn on gridlines if desired
 
     # add these event lines, specified by x-position
-    lines = {'a': '2020-02-17', 'b': '2020-04-03', 'c': '2020-06-01'}
+    lines = {'a': '2020-02-17', 'b': '2020-04-03', 'c': '2020-06-02'}
     for k in lines.keys():
         fig2.add_shape(type='line',
                        yref="y",
@@ -440,7 +440,7 @@ with row62:
 
 st.write(
     """    **Events:**  
-    **a**:  First 14-day Stay-Home-Notice imposed (17feb2020)  
-    **b**:  Start of First Circuit Breaker (3apr2020)  
-    **c**:  End of Phase 2 Heightened Alert (1jun2020)  
+    **a**:  Stay-Home-Notice imposed on Travellers (17feb2020)  
+    **b**:  Start of Circuit Breaker (3apr2020)  
+    **c**:  End of Circuit Breaker (2jun2020)  
     """)
