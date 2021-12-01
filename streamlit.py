@@ -18,6 +18,7 @@ from datetime import datetime, timedelta
 import streamlit as st
 import pandas as pd
 import numpy as np
+import plotly.graph_objects as go
 import plotly.express as px
 import pydeck as pdk
 from streamlit_folium import folium_static
@@ -105,6 +106,7 @@ def load_country_gdf():
 
 country_gdf = load_country_gdf()
 
+
 @st.cache(persist=True, allow_output_mutation=True, suppress_st_warning=True)
 def filter_data(full_data, baseline_date_start, analysis_date_start, hour_of_day, time_period, time_frequency):
     def get_time_delta(time_period, time_frequency):
@@ -148,6 +150,7 @@ def filter_data(full_data, baseline_date_start, analysis_date_start, hour_of_day
 
     return baseline_data, analysis_data
 
+
 @st.cache(persist=True, allow_output_mutation=True, suppress_st_warning=True)
 def taxigraph(dataset, region, hour, startdate, enddate):
     """
@@ -157,6 +160,7 @@ def taxigraph(dataset, region, hour, startdate, enddate):
     startdate: 'Pre-Covid Period Starts On' date
     enddate: 'Covid Period Starts On' date
     """
+
     def date_to_datetime(t):
         return datetime(t.year, t.month, t.day)
 
@@ -166,10 +170,11 @@ def taxigraph(dataset, region, hour, startdate, enddate):
     basedata = basedata[basedata.index.hour == hour]  # hour
     if region != "All":
         basedata = basedata.loc[basedata.region == region]  # region
-    
+
     basedata = basedata.reset_index()
-    basedata[ 'rolling_average' ] = basedata.taxi_count.rolling(90).mean()
+    basedata['rolling_average'] = basedata.taxi_count.rolling(90).mean()
     return basedata
+
 
 def create_folium_choropleth(taxi_count_df, country_geo, country_gdf, max_count):
     # center on Singapore
@@ -287,7 +292,7 @@ else:
 # st.write(baseline_data.taxi_count.max())
 # st.write(analysis_data.taxi_count.max())
 
-row41, row42 = st.columns((1,1))
+row41, row42 = st.columns((1, 1))
 with row41:
     baseline_from = date_to_datetime(baseline_date_start) + timedelta(hours=int(hour_of_day))
     if (baseline_from >= MIN_DATE_TIME) and (baseline_from <= MIN_COVID_DATE_TIME):
@@ -317,60 +322,125 @@ combined_data = combined_data.sort_values(by=['Delta'], ascending=False)
 combined_data_head = combined_data.head(15)
 combined_data_tail = combined_data.tail(15)
 
-melted_combined_data_head = combined_data_head.melt(id_vars=['District'], value_vars=['Pre-Covid', 'Post Covid'], var_name='Period', value_name='Taxi Count')
-melted_combined_data_tail = combined_data_tail.melt(id_vars=['District'], value_vars=['Pre-Covid', 'Post Covid'], var_name='Period', value_name='Taxi Count')
+melted_combined_data_head = combined_data_head.melt(id_vars=['District'], value_vars=['Pre-Covid', 'Post Covid'],
+                                                    var_name='Period', value_name='Taxi Count')
+melted_combined_data_tail = combined_data_tail.melt(id_vars=['District'], value_vars=['Pre-Covid', 'Post Covid'],
+                                                    var_name='Period', value_name='Taxi Count')
 
-summary_graph_plotly_head = px.bar(melted_combined_data_head, x='District', y='Taxi Count', color='Period', barmode='group', width=400, height=400, title="Top 15 Districts")
-summary_graph_plotly_tail = px.bar(melted_combined_data_tail, x='District', y='Taxi Count', color='Period', barmode='group', width=400, height=400, title="Bottom 15 Districts")
+summary_graph_plotly_head = px.bar(melted_combined_data_head, x='District', y='Taxi Count', color='Period',
+                                   barmode='group', width=400, height=400, title="Most Impacted Districts")
+summary_graph_plotly_head.update_layout(
+    xaxis = go.layout.XAxis(
+        tickangle = 45)
+)
 
-st.markdown(f'##### District-wise Change')
-row51, row52 = st.columns((1,1))
-with row51:    
+summary_graph_plotly_tail = px.bar(melted_combined_data_tail, x='District', y='Taxi Count', color='Period',
+                                   barmode='group', width=400, height=400, title="Least Impacted Districts")
+summary_graph_plotly_tail.update_layout(
+    xaxis = go.layout.XAxis(
+        tickangle = 45)
+)
+
+st.markdown("***")
+st.markdown(f'### Impact of Covid by District')
+st.write('The districts that saw the most and least change in taxi demand ')
+
+row51, row52 = st.columns((1, 1))
+with row51:
     st.plotly_chart(summary_graph_plotly_head, use_container_width=True)
 with row52:
     st.plotly_chart(summary_graph_plotly_tail, use_container_width=True)
 
 row61, row62 = st.columns((1, 1))
 # with row61:
-#----------------------------ANIMATED GRAPH----------------------------
+# ----------------------------ANIMATED GRAPH----------------------------
 all_districts_data = taxigraph(full_data, "All", hour_of_day, baseline_date_start, MAX_DATE_TIME)
 all_districts_data["date"] = all_districts_data["filename"].apply(lambda x: pd.to_datetime(x))
 all_districts_data = all_districts_data.drop(columns=["rolling_average"])
 # all_districts_data["date_str"] = all_districts_data["filename"].apply(lambda x:datetime.strftime(x, "%Y-%m-%d"))
-all_districts_data = all_districts_data.groupby([all_districts_data.region.rename("District"),\
-    all_districts_data.date.dt.year.rename("year"), all_districts_data.date.dt.month.rename("month")]).agg({'taxi_count':"sum"}).reset_index()
+all_districts_data = all_districts_data.groupby([all_districts_data.region.rename("District"), \
+                                                 all_districts_data.date.dt.year.rename("year"),
+                                                 all_districts_data.date.dt.month.rename("month")]).agg(
+    {'taxi_count': "sum"}).reset_index()
 all_districts_data["Date"] = all_districts_data["year"].astype(str) + "-" + all_districts_data["month"].astype(str)
 all_districts_data = all_districts_data.drop(columns=["year", "month"])
 max_taxi_count = all_districts_data.taxi_count.max()
 
-
-fig3 = px.bar(all_districts_data, x='District', y='taxi_count', color='District', animation_frame="Date",\
-    animation_group="District", \
-        hover_name='District', range_y=[0, max_taxi_count], range_x=[0,30], title=f"Top 30 Districts By Available Taxis at {hour_of_day} hours (grouped by month)")\
-            .update_xaxes(categoryorder="total descending")
+fig3 = px.bar(all_districts_data, x='District', y='taxi_count', color='District', animation_frame="Date", \
+              animation_group="District", \
+              hover_name='District', range_y=[0, max_taxi_count], range_x=[0, 30],
+              title=f"Districts with the largest taxi demand at {hour_of_day}:00 over time") \
+    .update_xaxes(categoryorder="total descending")
 st.plotly_chart(fig3, use_container_width=True)
-#----------------------------
+# ----------------------------
 
 st.markdown("***")
 st.subheader("Change in Taxi Demand over Time")
 st.write('Compare districts to see how taxi demand has changed over time')
 
-row61, row62 = st.columns((1,1))
+row61, row62 = st.columns((1, 1))
 with row61:
     selected_district_1 = st.selectbox("Select District 1:", list(combined_data.District.unique()))
 
     district_1_data = taxigraph(full_data, selected_district_1, hour_of_day, baseline_date_start, MAX_DATE_TIME)
-    # district_1_data["date"] = district_1_data["filename"].apply(lambda x:datetime.strftime(x, "%Y-%m-%d"))
-    # district_1_data
     fig1 = px.line(district_1_data, x='filename', y=['taxi_count', 'rolling_average'],
-        # animation_group="taxi_count", animation_frame="date",\
-        title=f'Taxi Data for {selected_district_1} at {hour_of_day} hours')
-    st.plotly_chart(fig1, use_container_width=True)
+                   labels={"filename": "Time", "value": "Taxi Count"},
+                   title=f'Taxi Data for {selected_district_1} at {hour_of_day} hours')
 
+    fig1.update_xaxes(showgrid=False).update_yaxes(showgrid=False) # turn on gridlines if desired
+
+    # add these event lines, specified by x-position
+    lines = {'a': '2020-02-17', 'b': '2020-04-03', 'c': '2020-06-01'}
+    for k in lines.keys():
+        fig1.add_shape(type='line',
+                      yref="y",
+                      xref="x",
+                      x0=lines[k],
+                      y0=-10,
+                      x1=lines[k],
+                      y1=district_1_data.taxi_count.max()*1.05,
+                      line=dict(color='grey', width=1))
+        fig1.add_annotation(
+            x=lines[k],
+            y=1.06,
+            yref='paper',
+            showarrow=False,
+            text=k)
+
+    st.plotly_chart(fig1, use_container_width=True)
 
 with row62:
     selected_district_2 = st.selectbox("Select District 2:", list(combined_data.District.unique()))
     district_2_data = taxigraph(full_data, selected_district_2, hour_of_day, baseline_date_start, MAX_DATE_TIME)
-    fig2 = px.line(district_2_data, x='filename', y=['taxi_count', 'rolling_average'], title=f'Taxi Data for {selected_district_2} at {hour_of_day} hours')
+    fig2 = px.line(district_2_data, x='filename', y=['taxi_count', 'rolling_average'],
+                   labels={"filename": "Time", "value": "Taxi Count"},
+                   title=f'Taxi Data for {selected_district_2} at {hour_of_day} hours')
+
+    fig2.update_xaxes(showgrid=False).update_yaxes(showgrid=False)  # turn on gridlines if desired
+
+    # add these event lines, specified by x-position
+    lines = {'a': '2020-02-17', 'b': '2020-04-03', 'c': '2020-06-01'}
+    for k in lines.keys():
+        fig2.add_shape(type='line',
+                       yref="y",
+                       xref="x",
+                       x0=lines[k],
+                       y0=-10,
+                       x1=lines[k],
+                       y1=district_2_data.taxi_count.max() * 1.05,
+                       line=dict(color='grey', width=1))
+        fig2.add_annotation(
+            x=lines[k],
+            y=1.06,
+            yref='paper',
+            showarrow=False,
+            text=k)
+
     st.plotly_chart(fig2, use_container_width=True)
 
+st.write(
+    """    **Events:**  
+    **a**:  First 14-day Stay-Home-Notice imposed (17feb2020)  
+    **b**:  Start of First Circuit Breaker (3apr2020)  
+    **c**:  End of Phase 2 Heightened Alert (1jun2020)  
+    """)
