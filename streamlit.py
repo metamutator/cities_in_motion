@@ -333,7 +333,7 @@ with row52:
 row61, row62 = st.columns((1, 1))
 # with row61:
 #----------------------------ANIMATED GRAPH----------------------------
-all_districts_data = taxigraph(full_data, "All", hour_of_day, baseline_date_start, analysis_date_start)
+all_districts_data = taxigraph(full_data, "All", hour_of_day, baseline_date_start, MAX_DATE_TIME)
 all_districts_data["date"] = all_districts_data["filename"].apply(lambda x: pd.to_datetime(x))
 all_districts_data = all_districts_data.drop(columns=["rolling_average"])
 # all_districts_data["date_str"] = all_districts_data["filename"].apply(lambda x:datetime.strftime(x, "%Y-%m-%d"))
@@ -359,7 +359,7 @@ row61, row62 = st.columns((1,1))
 with row61:
     selected_district_1 = st.selectbox("Select District 1:", list(combined_data.District.unique()))
 
-    district_1_data = taxigraph(full_data, selected_district_1, hour_of_day, baseline_date_start, analysis_date_start)
+    district_1_data = taxigraph(full_data, selected_district_1, hour_of_day, baseline_date_start, MAX_DATE_TIME)
     # district_1_data["date"] = district_1_data["filename"].apply(lambda x:datetime.strftime(x, "%Y-%m-%d"))
     # district_1_data
     fig1 = px.line(district_1_data, x='filename', y=['taxi_count', 'rolling_average'],
@@ -370,7 +370,7 @@ with row61:
 
 with row62:
     selected_district_2 = st.selectbox("Select District 2:", list(combined_data.District.unique()))
-    district_2_data = taxigraph(full_data, selected_district_2, hour_of_day, baseline_date_start, analysis_date_start)
+    district_2_data = taxigraph(full_data, selected_district_2, hour_of_day, baseline_date_start, MAX_DATE_TIME)
     fig2 = px.line(district_2_data, x='filename', y=['taxi_count', 'rolling_average'], title=f'Taxi Data for {selected_district_2} at {hour_of_day} hours')
     st.plotly_chart(fig2, use_container_width=True)
 
