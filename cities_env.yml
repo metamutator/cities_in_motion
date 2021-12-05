@@ -10,4 +10,5 @@ dependencies:
   - matplotlib
   - altair
   - plotly
+  - numpy
 prefix: /Users/Akshay_Regulagedda/opt/anaconda3/envs/cities_in_motion
