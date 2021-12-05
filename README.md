@@ -5,8 +5,8 @@ You need to create a conda environment first with all the necessary libraries. T
 # Running the app
 1. Clone the repo.
 2. Create a conda environment using the YAML file ( ``conda env create -f cities_env.yml`` )
-3. Install python depedencies ( ``pip install -r requirements.txt`` )
-4. Activate the environment in the terminal ( ``conda activate cities_in_motion``) 
+3. Activate the environment in the terminal ( ``conda activate cities_in_motion``) 
+4. Install python depedencies ( ``pip install -r requirements.txt`` )
 5. Hit ``streamlit run streamlit.py``
 
 This should open up the app in your browser. Alternatively, you may access the [live app here](https://share.streamlit.io/metamutator/cities_in_motion/main/streamlit.py)
