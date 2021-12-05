@@ -10,5 +10,4 @@ dependencies:
   - matplotlib
   - altair
   - plotly
-  - streamlit
 prefix: /Users/Akshay_Regulagedda/opt/anaconda3/envs/cities_in_motion
